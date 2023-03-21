@@ -4,6 +4,25 @@ import cartago.Artifact;
 import cartago.OPERATION;
 import cartago.OpFeedbackParam;
 
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.net.URLEncoder;
+
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
 /**
  * A CArtAgO artifact that agent can use to interact with LDP containers in a Solid pod.
  */
@@ -29,8 +48,57 @@ public class Pod extends Artifact {
    */
     @OPERATION
     public void createContainer(String containerName) {
-        log("1. Implement the method createContainer()");
+        log("creating new contrainer");
+
+        //creating body
+        String body = "@prefix ldp: <http://www.w3.org/ns/ldp#>.\n"+
+                "@prefix dcterms: <http://purl.org/dc/terms/>.\n" +
+                "<> a ldp:Container, ldp:BasicContainer, ldp:Resource;\n" +
+                "dcterms:title \"" + containerName + "\";\n" +
+                "dcterms:description \"Created container that will contain files for JaCoMo Application\".";
+        createContainerRequest(body, containerName);
     }
+        
+    private boolean createContainerRequest(String body, String namePod) {
+        String queryUrl = "https://solid.interactions.ics.unisg.ch/atilla/";
+
+        try {
+            URI uri = new URI(queryUrl);
+            log("URI: " + uri.toString());
+            log("query: " + body);
+            log("name of pod" + namePod + "/");
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(uri)
+                    .header("Link", "<http://www.w3.org/ns/ldp#BasicContainer>; rel=\"type\"")
+                    .header("Content-Type", "text/turtle")
+                    .header("Slug", namePod + "/")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+            HttpClient client = HttpClient.newHttpClient();
+            try {
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 201) {
+                    log("status code " + (response.statusCode()));
+                    throw new RuntimeException("HTTP error code : " + response.statusCode());
+                }
+                return true;
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        } catch (URISyntaxException e) {
+            e.printStackTrace();
+        }
+        return false;
+
+    }
+    
+            
+
+    
 
   /**
    * CArtAgO operation for publishing data within a .txt file in a Linked Data Platform container of the Solid pod
@@ -41,7 +109,62 @@ public class Pod extends Artifact {
    */
     @OPERATION
     public void publishData(String containerName, String fileName, Object[] data) {
-        log("2. Implement the method publishData()");
+        log("adding data to the LDP container");
+
+
+        URI fileUri = URI.create("https://solid.interactions.ics.unisg.ch/atilla/" + containerName + "/" + fileName);
+
+        String body = "";
+        for (Object obj : data) body += obj.toString() + "\n";
+
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            //check if file already exists
+            if(ressourceExists(fileUri)) {
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(fileUri)
+                    .header("Content-Type", "text/plain")
+                    .PUT(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+                    client.send(request, HttpResponse.BodyHandlers.ofString());
+            } else {
+                //POST if not existing
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://solid.interactions.ics.unisg.ch/atilla/" + containerName + "/"))
+                    .header("Content-Type", "text/plain")
+                    .header("Slug", fileName)
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+
+                    client.send(request, HttpResponse.BodyHandlers.ofString());
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }   
+    }
+
+    private Boolean ressourceExists(URI fileUri) {
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest getRequest = HttpRequest.newBuilder()
+            .uri(fileUri)
+            .GET()
+            .build();
+
+        try {
+            HttpResponse<String> response = client.send(getRequest, HttpResponse.BodyHandlers.ofString());
+            if(response.statusCode() == 200){
+                return true;
+            } 
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return false;
+        
     }
 
   /**
@@ -64,22 +187,24 @@ public class Pod extends Artifact {
    * @return An array whose elements are the data read from the .txt file
    */
     public Object[] readData(String containerName, String fileName) {
-        log("3. Implement the method readData(). Currently, the method returns mock data");
 
-        // Remove the following mock responses once you have implemented the method
-        switch(fileName) {
-            case "watchlist.txt":
-                Object[] mockWatchlist = new Object[]{"The Matrix", "Inception", "Avengers: Endgame"};
-                return mockWatchlist;
-            case "sleep.txt":
-                Object[] mockSleepData = new Object[]{"6", "7", "5"};
-                return mockSleepData;
-            case "trail.txt":
-                Object[] mockTrailData = new Object[]{"3", "5.5", "5.5"};
-                return mockTrailData; 
-            default:
-                return new Object[0];
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest getRequest = HttpRequest.newBuilder()
+            .uri(URI.create("https://solid.interactions.ics.unisg.ch/atilla/" + containerName + "/" + fileName))
+            .GET()
+            .build();
+
+        try {
+            HttpResponse<String> response = client.send(getRequest, HttpResponse.BodyHandlers.ofString());
+            return createArrayFromString(response.body());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
+
+        return new Object[] { "" };
+        
 
     }
 

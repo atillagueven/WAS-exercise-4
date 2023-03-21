@@ -1,7 +1,7 @@
 // movie manager agent
 
 /* Initial beliefs */
-watchlist(["The Matrix", "Inception", "Avengers: Endgame"]). // the agent believes that the user has a watchlist
+watchlist(["The Wolf of Wall Street", "Inception", "Avengers: Endgame", "The Godfather"]). // the agent believes that the user has a watchlist
 
 /* Initial goals */
 !start. // the agent has an initial goal to start
